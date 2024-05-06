@@ -80,6 +80,7 @@
  * main_full() is used when mainCREATE_SIMPLE_BLINKY_DEMO_ONLY is set to 0.
  */
 extern void main_blinky( void );
+extern void main_learn( void );
 extern void main_full( void );
 
 /*
