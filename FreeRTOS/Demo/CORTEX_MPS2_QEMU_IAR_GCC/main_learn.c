@@ -66,8 +66,8 @@
 #include "queue.h"
 
 /* Priorities at which the tasks are created. */
-#define mainQUEUE_RECEIVE_TASK_PRIORITY    ( tskIDLE_PRIORITY + 2 )
-#define mainQUEUE_SEND_TASK_PRIORITY       ( tskIDLE_PRIORITY + 1 )
+#define mainQUEUE_RECEIVE_TASK_PRIORITY    ( tskIDLE_PRIORITY + 1 )
+#define mainQUEUE_SEND_TASK_PRIORITY       ( tskIDLE_PRIORITY + 2 )
 
 /* The rate at which data is sent to the queue.  The times are converted from
  * milliseconds to ticks using the pdMS_TO_TICKS() macro. */
@@ -75,12 +75,30 @@
 #define mainTIMER_SEND_FREQUENCY_MS        pdMS_TO_TICKS( 2000UL )
 
 /* The number of items the queue can hold at once. */
-#define mainQUEUE_LENGTH                   ( 2 )
+#define mainQUEUE_LENGTH                   ( 5 )
 
 /* The values sent to the queue receive task from the queue send task and the
  * queue send software timer respectively. */
 #define mainVALUE_SENT_FROM_TASK           ( 100UL )
 #define mainVALUE_SENT_FROM_TIMER          ( 200UL )
+
+typedef enum
+{
+    eSender1,
+    eSender2
+} DataSource_t;
+
+typedef struct
+{
+    uint8_t ucValue;
+    DataSource_t eDataSource;
+} Data_t;
+
+static Data_t xStructsToSend[ 2 ] =
+{
+    { 100, eSender1 },
+    { 200, eSender2 }
+};
 
 QueueHandle_t xQueue;
 
@@ -88,14 +106,14 @@ QueueHandle_t xQueue;
 
 static void vSenderTask( void * pvParameters )
 {
-    unsigned int lValueToSend;
     BaseType_t xStatus;
-
-    lValueToSend = ( int32_t ) pvParameters;
+    const TickType_t xTicksToWait = pdMS_TO_TICKS( 100 );
 
     for( ;; )
     {
-        xStatus = xQueueSendToBack( xQueue, &lValueToSend, 0 );
+        /* Send struct to the Queue
+        */
+        xStatus = xQueueSendToBack( xQueue, pvParameters, xTicksToWait );
 
         if( xStatus != pdPASS )
         {
@@ -106,24 +124,30 @@ static void vSenderTask( void * pvParameters )
 
 static void vReceiverTask( void * pvParameters )
 {
-    unsigned int lReceivedValue;
+    Data_t xReceivedStruct;
     BaseType_t xStatus;
-    const TickType_t xTicksToWait = pdMS_TO_TICKS( 100 );
 
     for( ;; )
     {
         /* this task will empty the the queue of any data
            that is writtent to the queue */
-        if( uxQueueMessagesWaiting( xQueue ) != 0 )
+        if( uxQueueMessagesWaiting( xQueue ) != mainQUEUE_LENGTH )
         {
-            printf( "Queue should have been empty!\r\n" );
+            printf( "Queue should have been full!\r\n" );
         }
 
-        xStatus = xQueueReceive( xQueue, &lReceivedValue, xTicksToWait );
+        xStatus = xQueueReceive( xQueue, &xReceivedStruct, 0 );
 
         if( xStatus == pdPASS)
         {
-            printf( "Received = %x\r\n", lReceivedValue );
+            if( xReceivedStruct.eDataSource == eSender1 )
+            {
+                printf("From Sender 1 = %u\r\n", xReceivedStruct.ucValue);
+            }
+            else
+            {
+                printf("From Sender 2 = %u\r\n", xReceivedStruct.ucValue);
+            }
         }
         else
         {
@@ -142,12 +166,12 @@ void main_learn( void )
      * FreeRTOS web site for more details.  NOTE: This demo uses static allocation
      * for the idle and timer tasks so this line should never execute. */
     
-    xQueue = xQueueCreate( 5, sizeof( int32_t ) );
+    xQueue = xQueueCreate( mainQUEUE_LENGTH, sizeof( Data_t ) );
 
     if( xQueue != NULL )
     {
-        xTaskCreate( vSenderTask, "Sender1", 1000, ( void * ) 100, mainQUEUE_SEND_TASK_PRIORITY, NULL );
-        xTaskCreate( vSenderTask, "Sender2", 1000, ( void * ) 200, mainQUEUE_SEND_TASK_PRIORITY, NULL );
+        xTaskCreate( vSenderTask, "Sender1", 1000, &( xStructsToSend[ 0 ] ), mainQUEUE_SEND_TASK_PRIORITY, NULL );
+        xTaskCreate( vSenderTask, "Sender2", 1000, &( xStructsToSend[ 1 ] ), mainQUEUE_SEND_TASK_PRIORITY, NULL );
 
         xTaskCreate( vReceiverTask, "Receiver", 1000, NULL, mainQUEUE_RECEIVE_TASK_PRIORITY, NULL );
 
@@ -159,5 +183,5 @@ void main_learn( void )
         printf("ERROR: SO, just kill me here cuz im just running in QEMU\r\n");
     }
 
-    for( ; ; );
+    for( ;; );
 }
